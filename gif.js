@@ -81,13 +81,17 @@ var lzwDecode = function(minCodeSize, data) {
 			clear();
 			continue;
 		}
-		if (code === eoiCode) break;
+		if (code === eoiCode) {
+			break;
+		}
 		if (code < dict.length) {
 			if (last !== clearCode) {
 				dict.push(dict[last].concat(dict[code][0]));
 			}
 		} else {
-			if (code !== dict.length) throw new Error("Invalid LZW code.");
+			if (code !== dict.length) {
+				throw new Error("Invalid LZW code.");
+			}
 			dict.push(dict[last].concat(dict[last][0]));
 		}
 		output.push.apply(output, dict[code]);
@@ -97,7 +101,7 @@ var lzwDecode = function(minCodeSize, data) {
 		}
 	}
 	// I don't know if this is technically an error, but some GIFs do it.
-	//if (Math.ceil(pos / 8) !== data.length) throw new Error("Extraneous LZW bytes.");
+	// if (Math.ceil(pos / 8) !== data.length) throw new Error("Extraneous LZW bytes.");
 	return output;
 };
 // The actual parsing; returns an object with properties.
@@ -124,7 +128,9 @@ var parseGIF = function(st, handlerArg) {
 		var hdr = {};
 		hdr.sig = st.read(3);
 		hdr.ver = st.read(3);
-		if (hdr.sig !== "GIF") throw new Error("Not a GIF file."); // XXX: This should probably be handled more nicely.
+		if (hdr.sig !== "GIF") {
+			throw new Error("Not a GIF file."); // XXX: This should probably be handled more nicely.
+		}
 		hdr.width = st.readUnsigned();
 		hdr.height = st.readUnsigned();
 		var bits = byteToBitArr(st.readByte());
@@ -141,7 +147,7 @@ var parseGIF = function(st, handlerArg) {
 			handler.hdr(hdr);
 		}
 	};
-	var parseExt = function(block) {
+	var parseExt = function(blockArg) {
 		var parseGCExt = function(block) {
 			st.readByte(); // Always 4
 			var bits = byteToBitArr(st.readByte());
@@ -172,20 +178,20 @@ var parseGIF = function(st, handlerArg) {
 			}
 		};
 		var parseAppExt = function(block) {
-			var parseNetscapeExt = function(block) {
+			var parseNetscapeExt = function(innerBlockArg) {
 				st.readByte(); // Always 3
-				block.unknown = st.readByte(); // ??? Always 1? What is this?
-				block.iterations = st.readUnsigned();
-				block.terminator = st.readByte();
+				innerBlockArg.unknown = st.readByte(); // ??? Always 1? What is this?
+				innerBlockArg.iterations = st.readUnsigned();
+				innerBlockArg.terminator = st.readByte();
 				if (handler.app && handler.app.NETSCAPE) {
-					handler.app.NETSCAPE(block);
+					handler.app.NETSCAPE(innerBlockArg);
 				}
 			};
-			var parseUnknownAppExt = function(block) {
-				block.appData = readSubBlocks();
+			var parseUnknownAppExt = function(innerBlockArg) {
+				innerBlockArg.appData = readSubBlocks();
 				// FIXME: This won't work if a handler wants to match on any identifier.
-				if (handler.app && handler.app[block.identifier]) {
-					handler.app[block.identifier](block);
+				if (handler.app && handler.app[innerBlockArg.identifier]) {
+					handler.app[innerBlockArg.identifier](innerBlockArg);
 				}
 			};
 			st.readByte(); // Always 11
@@ -206,27 +212,27 @@ var parseGIF = function(st, handlerArg) {
 				handler.unknown(block);
 			}
 		};
-		block.label = st.readByte();
-		switch (block.label) {
+		blockArg.label = st.readByte();
+		switch (blockArg.label) {
 			case 0xF9:
-				block.extType = "gce";
-				parseGCExt(block);
+				blockArg.extType = "gce";
+				parseGCExt(blockArg);
 				break;
 			case 0xFE:
-				block.extType = "com";
-				parseComExt(block);
+				blockArg.extType = "com";
+				parseComExt(blockArg);
 				break;
 			case 0x01:
-				block.extType = "pte";
-				parsePTExt(block);
+				blockArg.extType = "pte";
+				parsePTExt(blockArg);
 				break;
 			case 0xFF:
-				block.extType = "app";
-				parseAppExt(block);
+				blockArg.extType = "app";
+				parseAppExt(blockArg);
 				break;
 			default:
-				block.extType = "unknown";
-				parseUnknownExt(block);
+				blockArg.extType = "unknown";
+				parseUnknownExt(blockArg);
 				break;
 		}
 	};
@@ -296,7 +302,9 @@ var parseGIF = function(st, handlerArg) {
 			default:
 				throw new Error("Unknown block: 0x" + block.sentinel.toString(16)); // TODO: Pad this with a 0.
 		}
-		if (block.type !== "eof") setTimeout(parseBlock, 0);
+		if (block.type !== "eof") {
+			setTimeout(parseBlock, 0);
+		}
 	};
 	var parse = function() {
 		parseHeader();
