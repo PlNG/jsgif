@@ -14,9 +14,9 @@ var Stream = function(data) {
 		return data.charCodeAt(this.pos++) & 0xFF;
 	};
 	this.readBytes = function(n) {
-		var bytes = [];
+		var bytes = new Array(n);
 		for (var i = 0; i < n; i++) {
-			bytes.push(this.readByte());
+			bytes[i] = this.readByte();
 		}
 		return bytes;
 	};
@@ -42,9 +42,9 @@ var parseGIF = function(st, handlerArg) {
 		}, 0);
 	};
 	var byteToBitArr = function(bite) {
-		var a = [];
-		for (var i = 7; i >= 0; i--) {
-			a.push(!!(bite & (1 << i)));
+		var a = new Array(8);
+		for (var i = 7, j = 0; i >= 0; i--,j++) {
+			a[j] = !!(bite & (1 << i));
 		}
 		return a;
 	};
@@ -66,58 +66,55 @@ var parseGIF = function(st, handlerArg) {
 		var clearCode = 1 << minCodeSize;
 		var eoiCode = clearCode + 1;
 		var codeSize = minCodeSize + 1;
-		var dict = [];
-		var clear = function() {
-			dict = [];
-			codeSize = minCodeSize + 1;
+		var dictInit = function() {
+			var dict = new Array(eoiCode);
 			for (var i = 0; i < clearCode; i++) {
 				dict[i] = [i];
 			}
 			dict[clearCode] = [];
 			dict[eoiCode] = null;
+			return dict;
 		};
-		var code;
+		var dict = dictInit;
+		var code = readCode(codeSize);
 		var last;
-		while (true) {
+		while (code !== eoiCode) {
+			if (code === clearCode) {
+				dict = dictInit;
+				codeSize = minCodeSize + 1;
+			} else {
+				if (code < dict.length) {
+					if (last !== clearCode) {
+						dict.push(dict[last].concat(dict[code][0]));
+					}
+				} else {
+					if (code !== dict.length) {
+						throw new Error("Invalid LZW code.");
+					}
+					dict.push(dict[last].concat(dict[last][0]));
+				}
+				output.push.apply(output, dict[code]);
+				if (dict.length === (1 << codeSize) && codeSize < 12) {
+					// If we're at the last code and codeSize is 12, the next code will be a clearCode, and it'll be 12 bits long.
+					codeSize++;
+				}
+			}
 			last = code;
 			code = readCode(codeSize);
-			if (code === clearCode) {
-				clear();
-				continue;
-			}
-			if (code === eoiCode) {
-				break;
-			}
-			if (code < dict.length) {
-				if (last !== clearCode) {
-					dict.push(dict[last].concat(dict[code][0]));
-				}
-			} else {
-				if (code !== dict.length) {
-					throw new Error("Invalid LZW code.");
-				}
-				dict.push(dict[last].concat(dict[last][0]));
-			}
-			output.push.apply(output, dict[code]);
-			if (dict.length === (1 << codeSize) && codeSize < 12) {
-				// If we're at the last code and codeSize is 12, the next code will be a clearCode, and it'll be 12 bits long.
-				codeSize++;
-			}
 		}
 		// I don't know if this is technically an error, but some GIFs do it.
 		// if (Math.ceil(pos / 8) !== data.length) throw new Error("Extraneous LZW bytes.");
 		return output;
 	};
 	var parseCT = function(entries) { // Each entry is 3 bytes, for RGB.
-		var ct = [];
-		for (var i = 0; i < entries; i++) {
-			ct.push(st.readBytes(3));
+		var i, ct = new Array(entries);
+		for (i = 0; i < entries; i++) {
+			ct[i] = st.readBytes(3);
 		}
 		return ct;
 	};
 	var readSubBlocks = function() {
-		var size, data;
-		data = "";
+		var size, data = "";
 		do {
 			size = st.readByte();
 			data += st.read(size);
@@ -199,6 +196,7 @@ var parseGIF = function(st, handlerArg) {
 			block.authCode = st.read(3);
 			switch (block.identifier) {
 				case "NETSCAPE":
+				case "ANIMEXTS":
 					parseNetscapeExt(block);
 					break;
 				default:
@@ -243,17 +241,15 @@ var parseGIF = function(st, handlerArg) {
 			var newPixels = new Array(pixels.length);
 			var rows = pixels.length / width;
 			var cpRow = function(toRow, fromRow) {
-				var fromPixels = pixels.slice(fromRow * width, (fromRow + 1) * width);
-				newPixels.splice.apply(newPixels, [toRow * width, width].concat(fromPixels));
+				newPixels.splice.apply(newPixels, [toRow * width, width].concat(pixels.slice(fromRow * width, (fromRow + 1) * width)));
 			};
 			// See appendix E.
 			var offsets = [0, 4, 2, 1];
 			var steps = [8, 8, 4, 2];
 			var fromRow = 0;
 			for (var pass = 0; pass < 4; pass++) {
-				for (var toRow = offsets[pass]; toRow < rows; toRow += steps[pass]) {
+				for (var toRow = offsets[pass]; toRow < rows; toRow += steps[pass], fromRow++;) {
 					cpRow(toRow, fromRow);
-					fromRow++;
 				}
 			}
 			return newPixels;
